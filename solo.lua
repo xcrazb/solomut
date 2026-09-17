@@ -1,7 +1,8 @@
 -- ============================================================
--- AUTO SCAN + FEED MUTATION MACHINE (SIMPLE v4)
+-- AUTO SCAN + FEED MUTATION MACHINE (SIMPLE v4.1)
 -- + Auto Deteksi Waktu Mesin
 -- + Auto Stop Jika Tidak Ada Pet Eligible
+-- + Skip Diamond & Gold
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -17,7 +18,7 @@ local CONFIG = {
     SCAN_INTERVAL = 2,
     DRY_RUN = false,
     TARGET_AGE = 50,
-    SKIP_MUTATIONS = {"Diamond"},
+    SKIP_MUTATIONS = {"Diamond", "Gold"},  -- ⭐ SKIP DIAMOND & GOLD
     DELAY_EQUIP = 0.8,
     DELAY_INSERT = 1,
     DELAY_COLLECT = 3,
@@ -25,7 +26,7 @@ local CONFIG = {
     POLL_INTERVAL = 2,
     MUTATION_TIMEOUT = 600,
     
-    -- ⭐ Auto stop
+    -- Auto stop
     AUTO_STOP_IF_EMPTY = true,
     EMPTY_CHECK_DELAY = 5,
     EMPTY_COUNT_THRESHOLD = 3,
@@ -86,12 +87,14 @@ local function getPetAge(petData)
     return ok and age or 0
 end
 
+-- ⭐ UPDATE: Skip Diamond & Gold
 local function isSkippedMutation(petData)
     if not petData.mutation then return false end
     local mut = petData.mutation
+    
     if type(mut) == "string" then
-        for _, m in ipairs(CONFIG.SKIP_MUTATIONS) do
-            if mut == m then return true end
+        for _, skip in ipairs(CONFIG.SKIP_MUTATIONS) do
+            if mut == skip then return true end
         end
     elseif type(mut) == "table" then
         for _, m in ipairs(mut) do
@@ -239,7 +242,6 @@ local function feedPetToMachine(petEntry)
         return true
     end
     
-    -- Cek mesin
     print("  ⏳ Cek mesin...")
     local waitIdle = 0
     while waitIdle < 60 do
@@ -255,12 +257,10 @@ local function feedPetToMachine(petEntry)
         waitIdle = waitIdle + 2
     end
     
-    -- Step 1: Equip
     print("  🎒 Equip...")
     safeFire(Remotes.equipTool, petId, "pet")
     task.wait(CONFIG.DELAY_EQUIP)
     
-    -- Step 2: Insert
     print("  🧬 Insert...")
     local ok, result = safeInvoke(Remotes.startMut, petId)
     if not ok or result == false or result == nil then
@@ -270,7 +270,6 @@ local function feedPetToMachine(petEntry)
     print("  ✅ Insert OK")
     task.wait(CONFIG.DELAY_INSERT)
     
-    -- Step 3: Tunggu
     print("  ⏳ Tunggu mutasi...")
     local waitStart = tick()
     local lastLog = 0
@@ -296,7 +295,6 @@ local function feedPetToMachine(petEntry)
         task.wait(CONFIG.POLL_INTERVAL)
     end
     
-    -- Step 4: Collect
     print("  📦 Collect...")
     task.wait(CONFIG.DELAY_COLLECT)
     
@@ -306,12 +304,23 @@ local function feedPetToMachine(petEntry)
         local mutationResult = parseMutationResult(cresult)
         print("  🎉 Collect OK:", tostring(mutationResult))
         
+        -- ⭐ Cek Diamond
         if mutationResult == "Diamond" then
             print("  💎💎💎 DIAMOND DIDAPAT!")
             pcall(function()
                 game:GetService("StarterGui"):SetCore("SendNotification", {
                     Title = "💎 Diamond Mutation!",
                     Text = petName .. " berhasil dapat Diamond!",
+                    Duration = 5,
+                })
+            end)
+        -- ⭐ Cek Gold (baru)
+        elseif mutationResult == "Gold" then
+            print("  🥇 GOLD DIDAPAT! Pet ini akan di-skip di scan berikutnya.")
+            pcall(function()
+                game:GetService("StarterGui"):SetCore("SendNotification", {
+                    Title = "🥇 Gold Mutation!",
+                    Text = petName .. " dapat Gold — akan di-skip",
                     Duration = 5,
                 })
             end)
@@ -355,7 +364,6 @@ local function autoFeedLoop()
             print(string.format("  ⏸ Tidak ada pet eligible (scan kosong #%d/%d)", 
                 emptyCount, CONFIG.EMPTY_COUNT_THRESHOLD))
             
-            -- ⭐ AUTO STOP
             if CONFIG.AUTO_STOP_IF_EMPTY and emptyCount >= CONFIG.EMPTY_COUNT_THRESHOLD then
                 print("  🛑 Semua pet sudah diproses / tidak ada yang eligible!")
                 print("  🛑 AUTO STOP...")
@@ -431,7 +439,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 34)
 Title.BackgroundColor3 = Color3.fromRGB(55, 40, 85)
 Title.BorderSizePixel = 0
-Title.Text = "🧬 AUTO MUTATION (v4 + Auto Stop)"
+Title.Text = "🧬 AUTO MUTATION (v4.1 + Skip Gold)"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.Font = Enum.Font.GothamBold
@@ -549,7 +557,7 @@ InfoLabel.Size = UDim2.new(1, -20, 0, 50)
 InfoLabel.Position = UDim2.new(0, 10, 0, 174)
 InfoLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 38)
 InfoLabel.BorderSizePixel = 0
-InfoLabel.Text = "Target Age: 50 | Skip: Diamond\nAuto Stop: ON (empty x3)"
+InfoLabel.Text = "Target Age: 50 | Skip: Diamond, Gold\nAuto Stop: ON (empty x3)"
 InfoLabel.TextColor3 = Color3.fromRGB(180, 180, 220)
 InfoLabel.TextSize = 10
 InfoLabel.Font = Enum.Font.Code
@@ -606,7 +614,7 @@ local function log(msg)
     print("[AutoMut] " .. msg)
 end
 
--- ⭐ GLOBAL STOP FUNCTION
+-- GLOBAL STOP
 function _G.__autoMutStop()
     CONFIG.AUTO_FEED = false
     emptyCount = 0
@@ -706,6 +714,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 end)
 
 -- PRINT
-log("✅ GUI loaded (v4 + Auto Stop)")
-log("🛑 Auto stop: ON (empty x" .. CONFIG.EMPTY_COUNT_THRESHOLD .. ")")
+log("✅ GUI loaded (v4.1)")
+log("🛑 Skip: Diamond, Gold")
 print("[AutoMut] ✅ Loaded! Tekan RightShift untuk toggle GUI.")
